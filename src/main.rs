@@ -55,16 +55,25 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
             let chat_id = msg.chat.id;
             let station = evedge::fetch_station_by_id(&charging_station_id).await?;
 
+            let _ = send_station_details(bot.clone(), chat_id, &station).await;
+
             tokio::spawn(async move {
                 let start_time = tokio::time::Instant::now();
                 let end_time = start_time + Duration::from_secs(60 * 15); // default timeout is 15 minutes
                 let mut interval = tokio::time::interval_at(start_time, Duration::from_secs(10));
 
+                let mut chargers_avail = station.available_evses;
+
                 while tokio::time::Instant::now() < end_time {
                     interval.tick().await;
 
-                    // TODO: check for changes in chargers
-                    let _ = send_station_details(bot.clone(), chat_id, &station).await;
+                    if let Ok(station) = evedge::fetch_station_by_id(&charging_station_id).await {
+                        if station.available_evses != chargers_avail {
+                            // TODO: check for changes in chargers
+                            chargers_avail = station.available_evses;
+                            let _ = send_station_details(bot.clone(), chat_id, &station).await;
+                        }
+                    }
                 }
             });
 
