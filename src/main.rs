@@ -30,6 +30,9 @@ enum Command {
     Help,
 }
 
+static TIMEOUT_DURATION: Duration = Duration::from_secs(120 * 60);
+static INTERVAL_DURATION: Duration = Duration::from_secs(15);
+
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
     match cmd {
         Command::Start => {
@@ -59,8 +62,8 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
 
             tokio::spawn(async move {
                 let start_time = tokio::time::Instant::now();
-                let end_time = start_time + Duration::from_secs(60 * 15); // default timeout is 15 minutes
-                let mut interval = tokio::time::interval_at(start_time, Duration::from_secs(10));
+                let mut end_time = start_time + TIMEOUT_DURATION;
+                let mut interval = tokio::time::interval_at(start_time, INTERVAL_DURATION);
 
                 let mut chargers_avail = station.available_evses;
 
@@ -69,12 +72,17 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
 
                     if let Ok(station) = evedge::fetch_station_by_id(&charging_station_id).await {
                         if station.available_evses != chargers_avail {
-                            // TODO: check for changes in chargers
                             chargers_avail = station.available_evses;
+                            end_time = tokio::time::Instant::now() + TIMEOUT_DURATION;
+
                             let _ = send_station_details(bot.clone(), chat_id, &station).await;
                         }
                     }
                 }
+
+                bot.send_message(chat_id, "No updates for 60 minutes, stopping.")
+                    .await
+                    .unwrap();
             });
 
             Ok(())
@@ -103,6 +111,26 @@ async fn send_station_details(
         ),
     )
     .await?;
+
+    for charge_point in &station.charge_points {
+        for ev in &charge_point.evses {
+            for connector in &ev.connectors {
+                if connector.status.title == "תפוס" || connector.status.id == 5 {
+                    bot.send_message(
+                        chat_id,
+                        format!(
+                            "Connector {} is occupied. CurrentSessionId={:?}, \
+                             PlannedDepartureTime={:?}",
+                            connector.id,
+                            &connector.current_session_id,
+                            &connector.planned_departure_time,
+                        ),
+                    )
+                    .await?;
+                }
+            }
+        }
+    }
 
     Ok(())
 }

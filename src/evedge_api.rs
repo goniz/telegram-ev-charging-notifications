@@ -192,6 +192,10 @@ pub struct Connector {
     pub payment_required: bool,
     #[serde(rename = "RatingIndex")]
     pub rating_index: i64,
+    #[serde(rename = "PlannedDepartureTime")]
+    pub planned_departure_time: Option<String>,
+    #[serde(rename = "CurrentSessionId")]
+    pub current_session_id: Option<i64>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
